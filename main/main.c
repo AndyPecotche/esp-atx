@@ -1017,7 +1017,9 @@ void app_main()
             }
         }
     } 
-    start_ping();
+    if (strlen(CONFIG_EXAMPLE_PING_ADDRESS) != 0) {
+        start_ping();
+    }
 
     // Configure GPIO pins
 
