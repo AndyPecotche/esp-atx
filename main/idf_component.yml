@@ -1,0 +1,4 @@
+dependencies:
+  protocol_examples_common:
+    path: ${IDF_PATH}/examples/common_components/protocol_examples_common
+  trombik/esp_wireguard: ^0.9.0

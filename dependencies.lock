@@ -1,0 +1,24 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.3.0
+  protocol_examples_common:
+    dependencies: []
+    source:
+      path: /home/andy/esp/esp-idf-v5.3/examples/common_components/protocol_examples_common
+      type: local
+    version: '*'
+  trombik/esp_wireguard:
+    component_hash: 06b514516c241f27493b7589d3d4a79f424713609891168e4e65f529f1980922
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.9.0
+direct_dependencies:
+- protocol_examples_common
+- trombik/esp_wireguard
+manifest_hash: 00dc14806687d8e0b701be48d23005daac44da5a20fb8ad61667ce639146060c
+target: esp32
+version: 2.0.0
