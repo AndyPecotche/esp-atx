@@ -1,0 +1,11 @@
+sdkconfig
+sdkconfig.old
+sdkconfig.defaults
+sdkconfig.defaults.esp32  
+sdkconfig.ci
+sdkconfig.ci.dynamic_buffer
+sdkconfig.ci.security1
+sdkconfig.ci.srv_ses_tkt
+build
+.vscode
+
