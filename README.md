@@ -69,6 +69,6 @@ Steps to deploy:
   
 - So in this example with can access with the 192.168.1.20 local IP (or forward it), or access by the VPN ip 10.8.0.2 from anywhere with another VPN client, or deploy a proxy to internet there is connected to the VPN  (Here is an example of wireguard easy deploy: https://github.com/AndyPecotche/IoTServer).
   If you dont want to use a VPN you still can access directly to the local IP.
-  The ping is for test the status of the VPN server, because if the public IP of the VPN changes, the ESP needs to be restarted, so after some failiure pings, the board will be restart, in this state, the local server, is still working.
+  The ping is for test the status of the VPN server, because if the public IP of the VPN changes, the ESP needs to be restarted, so after some failiure pings the board will be restart, in this state the local server is still working. If no PING ip is configured, the ping is not checked.
 
 - For reset Wifi, press 3 seconds the BOOT button in devkit (or gpio0 by default), and then reset the board.
