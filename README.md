@@ -79,9 +79,10 @@ Steps to deploy:
 - For reset Wifi, press 3 seconds the BOOT button in devkit (or gpio0 by default), and then reset the board.
 
 - This particular example sets GPIO 22 as "reset" and "status" PIN, and 23 to PWR pin. When the PWR or RST button is pressed on the Web server, a websocket message is send to the board, so the corresponding GPIO is set to LOW, so the GND and GPIO are shorted (and acts like if the ATX button is pressed on the PC), during the backend action, more websocket messages are sent, so the web client has some feedback of what is happening behind (like change the button color when GPIO its actually set to LOW and revert when is back to HIGH). The RST GPIO, also works as Status of power check, by changing as INPUT and OUTPUT GPIO dynamically, but it can be other GPIO, this just simplify the ATX connection.
+- 
 - The connection for this example, is just:
-  GPIO 22 to Reset+ on motherboard.
-  GPIO 23 to Power+ on motherboard.
-  VCC of ESP32 to 5v USB output of motherboard.
-  GND of ESP32 to GND of USB output of motherboard.
+  - GPIO 22 to Reset+ on motherboard.
+  - GPIO 23 to Power+ on motherboard.
+  - VCC of ESP32 to 5v USB output of motherboard.
+  - GND of ESP32 to GND of USB output of motherboard.
   This connection was tested on a msi b560m pro motherboard, and the current flow when the GPIO is set to GND is minimal as the same current when the ATX button is pressed on the mobo.
