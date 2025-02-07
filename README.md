@@ -1,4 +1,9 @@
+ESP32 GPIO WebServer from anywhere - ESP-IDF
+
+This is an ESP32 project to run: HTTPS/HTTP server + WS/WSS + Wireguard + WIFI provisioning
+
 Prerequisites, ESP-IDF framework (here to download: https://github.com/espressif/esp-idf/releases)
+
 
 Steps to deploy:
 - Download this repo.
