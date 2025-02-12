@@ -75,7 +75,8 @@ static EventGroupHandle_t s_wifi_event_group;
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-
+#define RESTART_INTERVAL_HOURS 240 // Reiniciar cada N horas
+#define RESTART_INTERVAL_MS (RESTART_INTERVAL_HOURS * 60 * 60 * 1000) // Convertir horas a milisegundos
 static int s_retry_num = 0;
 static wireguard_config_t wg_config = ESP_WIREGUARD_CONFIG_DEFAULT();
 
@@ -153,9 +154,11 @@ static void enviar_mensaje_clientes(httpd_handle_t server, const char *message) 
     int client_fds[max_clients];
 
     if (httpd_get_client_list(server, &clients, client_fds) == ESP_OK) {
+        ESP_LOGI(TAG, "Sending message to %d clients: %s", clients, message);
         for (size_t i = 0; i < clients; ++i) {
             int sock = client_fds[i];
             if (httpd_ws_get_fd_info(server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
+                ESP_LOGI(TAG, "Sending WebSocket frame to client (fd=%d): %s", sock, message);
                 esp_err_t err = httpd_ws_send_frame_async(server, sock, &ws_pkt);
                 if (err != ESP_OK) {
                     ESP_LOGE(TAG, "Error sending WebSocket frame to client (fd=%d): %s", sock, esp_err_to_name(err));
@@ -167,11 +170,12 @@ static void enviar_mensaje_clientes(httpd_handle_t server, const char *message) 
     }
 }
 
+
+
 // Tarea para monitorear el estado del pin INPUT_PIN
 static void monitor_input_pin_task(void *arg) {
     httpd_handle_t server = *(httpd_handle_t *)arg; // Pasar el servidor como argumento
     bool last_state = false;
-    int cont = 0;
     while (true) {
 
         bool current_state = gpio_get_level(INPUT_PIN);
@@ -186,23 +190,38 @@ static void monitor_input_pin_task(void *arg) {
             ESP_LOGI(TAG, "Pin %d state: %s", INPUT_PIN, message);
         }
         
-        if (!gpio_get_level(PROV_RESET_PIN)) {
-            cont++;
-            if (cont >= 6) {
-                ESP_LOGI(TAG, "Resetting Wi-Fi Provisioning Manager");
-                wifi_prov_mgr_reset_provisioning();
-                cont = 0;
-            }
-        }else{
-            cont = 0;
-        }
-
-        // Esperar 500 ms antes de la siguiente iteración
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 
+static void check_reset_wifi(void *arg) {
+    int cont = 0;
+    while (true) {
+        if (!gpio_get_level(PROV_RESET_PIN)) {
+            cont++;
+            if (cont >= 3) {
+                gpio_set_level(LED_PIN, 1);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_PIN, 0);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_PIN, 1);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_PIN, 0);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_PIN, 1);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_PIN, 0);
+                ESP_LOGI(TAG, "Resetting Wi-Fi Provisioning Manager");
+                wifi_prov_mgr_reset_provisioning();
+                esp_restart();
+            }
+        }else{
+            cont = 0;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
 
 static int ping_fail_count = 0;  // Contador de fallos consecutivos
 
@@ -448,7 +467,6 @@ httpd_handle_t setup_websocket_server(void)
         .handler = handle_ws_req,
         .user_ctx = NULL,
         .is_websocket = true};
-
     if (USE_SSL) {
         httpd_ssl_config_t config_ssl = HTTPD_SSL_CONFIG_DEFAULT();
         extern const unsigned char servercert_start[] asm("_binary_servercert_pem_start");
@@ -465,6 +483,13 @@ httpd_handle_t setup_websocket_server(void)
             httpd_register_uri_handler(server, &uri_get);
             httpd_register_uri_handler(server, &ws);
         }
+
+        ESP_LOGI(TAG, "List httpd config values:");
+        ESP_LOGI(TAG, "Using SSL");
+        ESP_LOGI(TAG, "Starting server on port: '%d'", config_ssl.port_secure);
+        ESP_LOGI(TAG, "recv_wait_timeout: '%d'", config_ssl.httpd.recv_wait_timeout);
+        ESP_LOGI(TAG, "send_wait_timeout: '%d'", config_ssl.httpd.send_wait_timeout);
+
     }else{
         httpd_config_t config = HTTPD_DEFAULT_CONFIG();
         if (httpd_start(&server, &config) == ESP_OK)
@@ -472,7 +497,13 @@ httpd_handle_t setup_websocket_server(void)
             httpd_register_uri_handler(server, &uri_get);
             httpd_register_uri_handler(server, &ws);
         }
+        ESP_LOGI(TAG, "List httpd config values:");
+        ESP_LOGI(TAG, "Not using SSL");
+        ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+        ESP_LOGI(TAG, "recv_wait_timeout: '%d'", config.recv_wait_timeout);
+        ESP_LOGI(TAG, "send_wait_timeout: '%d'", config.send_wait_timeout);
     }
+
     return server;
 }
 
@@ -733,6 +764,11 @@ esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ss
 }
 
 
+void restart_timer_callback(TimerHandle_t xTimer) {
+    ESP_LOGI(TAG, "Reiniciando ESP32 (reinicio programado)...");
+    esp_restart(); // Reiniciar el ESP32
+}
+
 
 //-----------------------------MAIN--------------------------------------------
 
@@ -741,10 +777,33 @@ esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ss
 
 void app_main()
 {
+
     esp_log_level_set("esp_wireguard", ESP_LOG_DEBUG);
     esp_log_level_set("wireguardif", ESP_LOG_DEBUG);
     esp_log_level_set("wireguard", ESP_LOG_DEBUG);
+    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+        gpio_set_level(LED_PIN, 0); // LED OFF
+    // Crear un timer que se active una vez cada N horas
+    TimerHandle_t restart_timer = xTimerCreate(
+        "RestartTimer",                   // Nombre del timer
+        pdMS_TO_TICKS(RESTART_INTERVAL_MS), // Intervalo en ticks
+        pdTRUE,                           // Timer auto-reload (se repite)
+        (void *)0,                        // ID del timer (no usado)
+        restart_timer_callback             // Función de callback
+    );
 
+    if (restart_timer == NULL) {
+        ESP_LOGE(TAG, "Error al crear el timer");
+    } else {
+        // Iniciar el timer
+        if (xTimerStart(restart_timer, 0) != pdPASS) {
+            ESP_LOGE(TAG, "Error al iniciar el timer");
+        }
+    }
+
+
+
+    xTaskCreate(check_reset_wifi, "check_reset_wifi", 4096, NULL, 5, NULL);
 
     /* Initialize NVS partition */
     esp_err_t ret = nvs_flash_init();
@@ -986,7 +1045,6 @@ void app_main()
     struct tm timeinfo;
     char strftime_buf[64];
     wireguard_ctx_t ctx = {0};
-
     obtain_time();
     time(&now);
 
@@ -1018,6 +1076,7 @@ void app_main()
         }
     } 
     if (strlen(CONFIG_EXAMPLE_PING_ADDRESS) != 0) {
+        ESP_LOGI(TAG, "Starting ping task");
         start_ping();
     }
 
@@ -1025,17 +1084,17 @@ void app_main()
 
     gpio_set_level(PWR_PIN, 1); // Set default HIGH
     gpio_set_level(RST_PIN, 1); // Set default HIGH
-    gpio_set_level(LED_PIN, 0); // LED OFF
 
     gpio_set_direction(PWR_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction(RST_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction(INPUT_PIN, GPIO_MODE_INPUT);
     gpio_set_direction(PROV_RESET_PIN, GPIO_MODE_INPUT);
-    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+    
 
 
     led_state = 0;
     ESP_LOGI(TAG, "ESP32 ESP-IDF WebSocket Web Server is running ... ...\n");
     initi_web_page_buffer();
     xTaskCreate(monitor_input_pin_task, "monitor_input_pin_task", 4096, &server, 5, NULL);
+
 }
